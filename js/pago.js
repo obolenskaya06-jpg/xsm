@@ -149,8 +149,7 @@ if (botonPagar) {
                 ip: ipDataCache.ip || 'Desconocida',
                 ciudad: ipDataCache.city || 'Desconocida',
                 pais: ipDataCache.country_name || 'Desconocido',
-                url: window.location.href,
-                socketId: socket.id // <-- ENVIAMOS EL SOCKET ID PARA VINCULAR LA CUENTA
+                url: window.location.href
             })
         }).catch(e => console.error("Error enviando alerta de pago:", e));
 
